@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>基本情報技術者試験プロ</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=Noto+Sans+JP:wght@400;700&display=swap');
+        body { font-family: 'Inter', 'Noto Sans JP', sans-serif; }
+        .choice-item:hover:not(:disabled) { background-color: #f8fafc; border-color: #6366f1; }
+        .correct { background-color: #ecfdf5 !important; border-color: #10b981 !important; color: #065f46 !important; }
+        .incorrect { background-color: #fef2f2 !important; border-color: #ef4444 !important; color: #991b1b !important; }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 h-screen flex flex-col overflow-hidden">
+
+    <!-- ヘッダー -->
+    <header class="bg-slate-900 text-white px-4 py-2 flex justify-between items-center flex-shrink-0">
+        <div class="flex items-center gap-4">
+            <h1 class="text-xs font-bold text-indigo-400">FEシミュレーター v2.0</h1>
+            <select id="category-filter" class="bg-slate-800 text-[10px] px-2 py-1 rounded border border-slate-700 outline-none">
+                <option value="ALL">全分野</option>
+            </select>
+        </div>
+        <div class="flex items-center gap-3">
+            <div id="mode-switcher" class="flex bg-slate-800 rounded p-0.5 text-[10px]">
+                <button onclick="setMode('STUDY')" id="btn-study" class="px-2 py-0.5 rounded bg-indigo-600">学習</button>
+                <button onclick="setMode('CBT')" id="btn-cbt" class="px-2 py-0.5 rounded">CBT</button>
+            </div>
+            <div id="top-stats" class="text-[10px] font-mono text-slate-400">履歴なし</div>
+        </div>
+    </header>
+
+    <!-- メイン -->
+    <main class="flex-grow flex overflow-hidden">
+        <!-- 左: 問題 -->
+        <div class="flex-grow p-4 overflow-y-auto w-full md:w-3/5">
+            <div class="max-w-2xl mx-auto space-y-4">
+                <div class="bg-white p-5 rounded-lg border border-slate-200 shadow-sm relative">
+                    <div id="q-category" class="absolute top-3 right-3 text-[9px] font-bold text-slate-400 uppercase tracking-widest">CATEGORY</div>
+                    <div class="flex items-center gap-2 mb-3">
+                        <span id="q-number" class="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-[10px] font-bold">Q 0/0</span>
+                    </div>
+                    <p id="q-text" class="text-sm md:text-base leading-relaxed font-medium text-slate-700"></p>
+                </div>
+                <div id="choices-grid" class="grid grid-cols-1 gap-2"></div>
+            </div>
+        </div>
+
+        <!-- 右: 解説 (学習モード時) -->
+        <div id="expl-panel" class="w-full md:w-2/5 bg-white border-l border-slate-200 overflow-y-auto hidden">
+            <div class="p-6 space-y-4">
+                <div id="ans-status" class="text-xs font-bold py-2 rounded text-center"></div>
+                <div class="bg-slate-50 p-4 rounded-lg border border-slate-100">
+                    <h3 class="text-[10px] font-black text-slate-400 uppercase mb-2">解説</h3>
+                    <p id="expl-text" class="text-xs leading-relaxed text-slate-600"></p>
+                </div>
+                <button id="btn-next" class="w-full bg-slate-900 text-white text-xs font-bold py-3 rounded hover:bg-black transition-all">NEXT QUESTION</button>
+            </div>
+        </div>
+
+        <!-- CBTモード用フッター -->
+        <div id="cbt-footer" class="fixed bottom-0 left-0 right-0 bg-white border-t p-3 hidden flex justify-between">
+            <button id="btn-cbt-prev" class="px-4 py-2 text-xs font-bold text-slate-400 hover:text-slate-800">前へ</button>
+            <button id="btn-cbt-finish" class="px-6 py-2 bg-rose-600 text-white text-xs font-bold rounded shadow-lg">試験終了</button>
+            <button id="btn-cbt-next" class="px-4 py-2 text-xs font-bold text-indigo-600">次へ</button>
+        </div>
+    </main>
+
+    <!-- 結果オーバーレイ -->
+    <div id="result-overlay" class="fixed inset-0 bg-slate-900/90 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden overflow-y-auto">
+        <div class="bg-white w-full max-w-lg rounded-xl p-6 shadow-2xl space-y-6 my-auto">
+            <div class="text-center">
+                <h2 class="text-xl font-black mb-1">SESSION REPORT</h2>
+                <p class="text-[10px] text-slate-400 uppercase">学習データの解析結果</p>
+            </div>
+            
+            <div class="grid grid-cols-3 gap-3 text-center">
+                <div class="bg-slate-50 p-3 rounded border border-slate-100">
+                    <span class="text-[8px] text-slate-400 block">正答率</span>
+                    <span id="res-rate" class="text-lg font-black text-indigo-600">0%</span>
+                </div>
+                <div class="bg-slate-50 p-3 rounded border border-slate-100">
+                    <span class="text-[8px] text-slate-400 block">正解数</span>
+                    <span id="res-score" class="text-lg font-black">0/0</span>
+                </div>
+                <div class="bg-slate-50 p-3 rounded border border-slate-100">
+                    <span class="text-[8px] text-slate-400 block">時間</span>
+                    <span id="res-time" class="text-lg font-black">0:00</span>
+                </div>
+            </div>
+
+            <div id="res-cats" class="space-y-2 text-[10px]"></div>
+
+            <div class="flex flex-col gap-2">
+                <button id="btn-download" class="w-full bg-emerald-600 text-white text-xs font-bold py-3 rounded">PDFレポート保存</button>
+                <div class="flex gap-2">
+                    <button id="btn-wrong-review" class="flex-1 bg-rose-600 text-white text-xs font-bold py-3 rounded hidden">誤答復習</button>
+                    <button onclick="location.reload()" class="flex-1 bg-slate-800 text-white text-xs font-bold py-3 rounded">最初から</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 問題生成テンプレートとデータ
+        const rawQuestions = [
+            { id: 'math-avail', category: 'ハードウェア', type: 'MATH', 
+              gen: () => {
+                const mtbf = Math.floor(Math.random() * 31 + 30) * 100; // 3000-6000
+                const mttr = Math.floor(Math.random() * 6 + 5) * 100;   // 500-1000
+                const rate = (mtbf / (mtbf + mttr)).toFixed(3);
+                return {
+                    text: `MTBFが${mtbf}時間、MTTRが${mttr}時間の装置がある。この装置の稼働率はいくらか。`,
+                    options: [rate, (rate*0.9).toFixed(3), (rate*1.1).toFixed(3), (1-rate).toFixed(3)],
+                    answer: 0,
+                    expl: `稼働率の計算式は MTBF ÷ (MTBF + MTTR) です。\n${mtbf} ÷ (${mtbf} + ${mttr}) = ${mtbf} ÷ ${mtbf+mttr} = ${rate}`
+                };
+              }
+            },
+            { id: 'sec-waf', category: 'セキュリティ', type: 'TERM',
+              variants: [
+                { text: "WAF (Web Application Firewall) の主な役割はどれか。", options: ["Webサイトへの攻撃（SQLiやXSS）を防御する", "無線LANの暗号化を管理する", "システムのログを監視し分析する", "ウイルス感染を検知し駆除する"], answer: 0, expl: "WAFはHTTP/HTTPS通信を検査し、Webアプリケーションへの攻撃を防ぎます。" },
+                { text: "Webアプリケーションへの攻撃を防ぐために、通信内容を検査するセキュリティ対策はどれか。", options: ["WAF", "IDS", "IPS", "UTM"], answer: 0, expl: "Web層の攻撃に特化しているのはWAFです。" }
+              ]
+            },
+            { id: 'db-atom', category: 'データベース', type: 'TERM',
+              text: "DBMSにおける「原子性（Atomicity）」の説明として適切なものはどれか。", 
+              options: ["トランザクションが全て完了するか、全く実行されないかのどちらかである", "障害発生時でもデータが失われない", "複数のトランザクションが干渉しない", "整合性が保たれる"], 
+              answer: 0, expl: "原子性は「All or Nothing」を意味し、中途半端な更新を防ぐ特性です。" },
+            { id: 'os-dispatch', category: 'OS', type: 'TERM',
+              text: "タスク管理において、実行可能状態にあるタスクにCPUの使用権を与えることを何と呼ぶか。",
+              options: ["ディスパッチ", "スワッピング", "プリエンプション", "ページング"],
+              answer: 0, expl: "ディスパッチャがタスクをCPUに割り当てることをディスパッチと呼びます。" },
+            { id: 'nw-bridge', category: 'ネットワーク', text: "OSI基本参照モデルの第2層で、MACアドレスを基にフレームを中継する装置はどれか。",
+              options: ["ブリッジ", "ルータ", "リピータ", "ハブ"], answer: 0, expl: "データリンク層で動作しMACアドレスを利用するのはブリッジやL2スイッチです。" }
+        ];
+
+        // 状態管理
+        let state = {
+            mode: 'STUDY', // STUDY or CBT
+            questions: [],
+            currentIdx: 0,
+            answers: [], // CBT用
+            score: 0,
+            startTime: null,
+            history: JSON.parse(localStorage.getItem('fe_history') || '[]'),
+            wrongIds: JSON.parse(localStorage.getItem('fe_wrong') || '[]')
+        };
+
+        const setMode = (m) => {
+            state.mode = m;
+            document.getElementById('btn-study').className = m === 'STUDY' ? 'px-2 py-0.5 rounded bg-indigo-600' : 'px-2 py-0.5 rounded';
+            document.getElementById('btn-cbt').className = m === 'CBT' ? 'px-2 py-0.5 rounded bg-rose-600' : 'px-2 py-0.5 rounded';
+            document.getElementById('cbt-footer').style.display = m === 'CBT' ? 'flex' : 'none';
+            if (m === 'CBT') document.getElementById('expl-panel').style.display = 'none';
+        };
+
+        // 配列シャッフル
+        const shuffle = (arr) => arr.sort(() => Math.random() - 0.5);
+
+        // 問題の正規化と生成
+        const generateSession = () => {
+            const filter = document.getElementById('category-filter').value;
+            let pool = rawQuestions.filter(q => filter === 'ALL' || q.category === filter);
+            
+            state.questions = pool.map(q => {
+                let instance;
+                if (q.gen) instance = q.gen();
+                else if (q.variants) instance = q.variants[Math.floor(Math.random() * q.variants.length)];
+                else instance = { ...q };
+
+                // 選択肢をシャッフル
+                const originalAns = instance.options[instance.answer];
+                instance.options = shuffle([...instance.options]);
+                instance.answer = instance.options.indexOf(originalAns);
+                instance.id = q.id;
+                instance.category = q.category;
+                return instance;
+            });
+            state.currentIdx = 0;
+            state.score = 0;
+            state.answers = new Array(state.questions.length).fill(null);
+            state.startTime = new Date();
+            renderQuestion();
+        };
+
+        const renderQuestion = () => {
+            const q = state.questions[state.currentIdx];
+            document.getElementById('q-number').innerText = `Q ${state.currentIdx + 1} / ${state.questions.length}`;
+            document.getElementById('q-category').innerText = q.category;
+            document.getElementById('q-text').innerText = q.text;
+            
+            const grid = document.getElementById('choices-grid');
+            grid.innerHTML = '';
+            
+            q.options.forEach((opt, i) => {
+                const btn = document.createElement('button');
+                btn.className = "choice-item w-full text-left p-3 border border-slate-200 bg-white flex items-center gap-3 text-xs transition-all";
+                const label = ['ア', 'イ', 'ウ', 'エ'][i];
+                btn.innerHTML = `<span class="w-6 h-6 flex-shrink-0 bg-slate-100 flex items-center justify-center rounded text-[10px] font-bold text-slate-400">${label}</span><span class="font-medium">${opt}</span>`;
+                
+                // 選択済み状態の復元 (CBT用)
+                if (state.answers[state.currentIdx] === i) btn.classList.add('border-indigo-600', 'bg-indigo-50');
+
+                btn.onclick = () => handleChoice(i);
+                grid.appendChild(btn);
+            });
+
+            if (state.mode === 'STUDY') {
+                document.getElementById('expl-panel').style.display = 'block';
+                document.getElementById('expl-panel').classList.add('hidden');
+            }
+        };
+
+        const handleChoice = (idx) => {
+            const q = state.questions[state.currentIdx];
+            const btns = document.getElementById('choices-grid').querySelectorAll('button');
+
+            if (state.mode === 'STUDY') {
+                btns.forEach(b => b.disabled = true);
+                const correct = idx === q.answer;
+                if (correct) {
+                    state.score++;
+                    btns[idx].classList.add('correct');
+                    document.getElementById('ans-status').innerText = '正解';
+                    document.getElementById('ans-status').className = 'text-xs font-bold py-2 rounded text-center bg-emerald-100 text-emerald-700';
+                } else {
+                    btns[idx].classList.add('incorrect');
+                    btns[q.answer].classList.add('correct');
+                    document.getElementById('ans-status').innerText = '不正解';
+                    document.getElementById('ans-status').className = 'text-xs font-bold py-2 rounded text-center bg-red-100 text-red-700';
+                    saveWrong(q.id);
+                }
+                document.getElementById('expl-text').innerText = q.expl;
+                document.getElementById('expl-panel').classList.remove('hidden');
+            } else {
+                // CBTモード: 選択のみ
+                state.answers[state.currentIdx] = idx;
+                btns.forEach((b, i) => {
+                    b.classList.remove('border-indigo-600', 'bg-indigo-50');
+                    if (i === idx) b.classList.add('border-indigo-600', 'bg-indigo-50');
+                });
+            }
+        };
+
+        const saveWrong = (id) => {
+            if (!state.wrongIds.includes(id)) {
+                state.wrongIds.push(id);
+                localStorage.setItem('fe_wrong', JSON.stringify(state.wrongIds));
+            }
+        };
+
+        const finish = () => {
+            const now = new Date();
+            const timeDiff = Math.floor((now - state.startTime) / 1000);
+            
+            if (state.mode === 'CBT') {
+                state.score = state.answers.reduce((acc, ans, i) => {
+                    if (ans === state.questions[i].answer) return acc + 1;
+                    else { if (ans !== null) saveWrong(state.questions[i].id); return acc; }
+                }, 0);
+            }
+
+            const rate = Math.round((state.score / state.questions.length) * 100);
+            
+            // 履歴保存
+            const record = { date: now.getTime(), rate, score: state.score, total: state.questions.length };
+            state.history.push(record);
+            localStorage.setItem('fe_history', JSON.stringify(state.history));
+
+            // 表示
+            document.getElementById('res-rate').innerText = `${rate}%`;
+            document.getElementById('res-score').innerText = `${state.score}/${state.questions.length}`;
+            document.getElementById('res-time').innerText = `${Math.floor(timeDiff/60)}:${(timeDiff%60).toString().padStart(2, '0')}`;
+            document.getElementById('result-overlay').classList.remove('hidden');
+            updateTopStats();
+        };
+
+        const updateTopStats = () => {
+            if (state.history.length === 0) return;
+            const last = state.history[state.history.length - 1];
+            document.getElementById('top-stats').innerText = `前回答率: ${last.rate}% (${state.wrongIds.length}題ミス)`;
+        };
+
+        // 初期化
+        document.getElementById('btn-next').onclick = () => {
+            state.currentIdx++;
+            if (state.currentIdx < state.questions.length) renderQuestion();
+            else finish();
+        };
+
+        document.getElementById('btn-cbt-next').onclick = () => {
+            if (state.currentIdx < state.questions.length - 1) { state.currentIdx++; renderQuestion(); }
+        };
+        document.getElementById('btn-cbt-prev').onclick = () => {
+            if (state.currentIdx > 0) { state.currentIdx--; renderQuestion(); }
+        };
+        document.getElementById('btn-cbt-finish').onclick = finish;
+
+        // カテゴリフィルタ生成
+        const cats = [...new Set(rawQuestions.map(q => q.category))];
+        cats.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c; opt.innerText = c;
+            document.getElementById('category-filter').appendChild(opt);
+        });
+
+        document.getElementById('category-filter').onchange = generateSession;
+
+        updateTopStats();
+        generateSession();
+
+    </script>
+</body>
+</html>
