@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FE科目Aスマートコーチ</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap');
+        body { font-family: 'Noto Sans JP', sans-serif; background-color: #f5f2ed; color: #334155; }
+        .notebook { background-color: #fffaf5; background-image: repeating-linear-gradient(transparent, transparent 27px, #e2e8f0 28px); line-height: 28px; padding-top: 4px; }
+        .choice-btn { position: relative; transition: all 0.2s ease; border-left: 0 solid #5a7d9a; overflow: hidden; background: white; }
+        .choice-btn:hover:not(:disabled) { border-left-width: 6px; transform: translateX(4px); background-color: #fcfaf7; }
+        .choice-btn:active:not(:disabled) { transform: scale(0.98); }
+        .ripple { position: relative; overflow: hidden; }
+        .ripple::after { content: ""; position: absolute; top: 50%; left: 50%; width: 5px; height: 5px; background: rgba(255,255,255,0.4); opacity: 0; border-radius: 100%; transform: scale(1, 1) translate(-50%, -50%); transform-origin: 50% 50%; }
+        .ripple:active::after { animation: ripple-effect 0.4s ease-out; }
+        @keyframes ripple-effect { 0% { transform: scale(0, 0); opacity: 1; } 100% { opacity: 0; transform: scale(40, 40); } }
+        .status-icon { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; margin-right: 8px; font-weight: bold; font-size: 14px; }
+        .correct-icon { background: #10b981; color: white; }
+        .incorrect-icon { background: #ef4444; color: white; }
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden">
+    <header class="bg-[#2c3e50] text-[#f5f2ed] px-6 py-4 flex justify-between items-center border-b-4 border-[#5a7d9a] shadow-xl flex-shrink-0 z-10">
+        <div class="flex items-center gap-8">
+            <h1 class="text-base md:text-lg font-bold tracking-wide border-b-2 border-[#5a7d9a] pb-0.5">FE科目Aスマートコーチ</h1>
+            <div class="flex items-center gap-2">
+                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">分野選択:</span>
+                <select id="category-filter" class="bg-[#34495e] text-xs px-3 py-1.5 rounded border border-[#5a7d9a] outline-none cursor-pointer focus:ring-2 ring-[#5a7d9a]">
+                    <option value="ALL">全ての分野</option>
+                </select>
+            </div>
+        </div>
+        <div id="top-stats" class="hidden text-[11px] bg-[#1a252f] px-4 py-2 rounded-lg text-slate-300 font-mono border border-slate-700 shadow-inner"></div>
+    </header>
+    <main class="flex-grow flex overflow-hidden">
+        <div class="flex-grow p-8 overflow-y-auto w-full md:w-3/5">
+            <div class="max-w-3xl mx-auto space-y-8">
+                <div class="bg-white p-10 rounded-2xl border-b-4 border-r-4 border-slate-200 shadow-md relative overflow-hidden">
+                    <div id="q-category" class="absolute top-0 right-0 bg-[#5a7d9a] text-white px-5 py-1.5 text-[10px] font-bold rounded-bl-xl shadow-sm"></div>
+                    <div class="mb-6 flex items-center">
+                        <span id="q-number" class="text-sm font-black text-[#5a7d9a] border-b-4 border-[#5a7d9a] leading-none">問 0 / 0</span>
+                    </div>
+                    <p id="q-text" class="text-lg md:text-xl leading-relaxed font-bold text-slate-800"></p>
+                </div>
+                <div id="choices-grid" class="grid grid-cols-1 gap-4"></div>
+            </div>
+        </div>
+        <div id="expl-panel" class="w-full md:w-2/5 border-l-4 border-slate-200 flex flex-col hidden bg-[#fffaf5] shadow-2xl">
+            <div class="flex-grow overflow-y-auto p-10 notebook">
+                <div id="ans-status" class="mb-8"></div>
+                <div class="mb-6">
+                    <h3 class="text-sm font-black text-[#5a7d9a] mb-6 border-l-8 border-[#5a7d9a] pl-3 tracking-widest">解説ノート</h3>
+                    <p id="expl-text" class="text-base leading-[28px] text-slate-600 font-medium whitespace-pre-wrap"></p>
+                </div>
+            </div>
+            <div class="p-8 border-t bg-white shadow-inner relative overflow-hidden">
+                <div id="progress-bar-bg" class="absolute top-0 left-0 h-1 bg-slate-100 w-full"></div>
+                <div id="progress-bar-fill" class="absolute top-0 left-0 h-1 bg-indigo-500 transition-all duration-500" style="width: 0%"></div>
+                <button id="btn-next" class="ripple w-full bg-[#5a7d9a] hover:bg-[#4a6b85] text-white text-base font-black py-5 rounded-2xl shadow-lg transition-all active:scale-[0-98] flex items-center justify-center gap-2">
+                    次の問題へ <span id="progress-label" class="text-xs opacity-70">1 / 5</span>
+                </button>
+            </div>
+        </div>
+    </main>
+    <div id="result-overlay" class="fixed inset-0 bg-slate-900/95 backdrop-blur-xl z-50 flex items-center justify-center p-6 hidden">
+        <div id="pdf-report" style="display:none; width: 210mm; background: white; padding: 40px; position: fixed; top: 0; left: 0; z-index: -100; color: #1e293b;">
+            <h1 style="text-align:center; font-size: 32px; font-weight: 900; color: #2c3e50; margin-bottom: 10px;">基本情報技術者試験　演習レポート</h1>
+            <div id="pdf-date" style="text-align: right; border-bottom: 2px solid #5a7d9a; padding-bottom: 10px; margin-bottom: 40px; font-size: 16px;"></div>
+            <div style="text-align: center; margin-bottom: 50px;">
+                <div id="pdf-rate-num" style="font-size: 96px; font-weight: 900; line-height: 1;"></div>
+                <div id="pdf-judge" style="font-size: 24px; font-weight: bold; margin-top: 10px;"></div>
+            </div>
+            <div style="display: flex; justify-content: space-around; background: #f8fafc; padding: 30px; border-radius: 20px; margin-bottom: 40px;">
+                <div style="text-align: center;"><span style="font-size: 14px; color: #64748b;">正解数</span><br><span id="pdf-score" style="font-size: 28px; font-weight: bold;"></span></div>
+                <div style="text-align: center;"><span style="font-size: 14px; color: #64748b;">学習時間</span><br><span id="pdf-time" style="font-size: 28px; font-weight: bold;"></span></div>
+            </div>
+            <div style="text-align: center; border-top: 1px solid #e2e8f0; padding-top: 30px;">
+                <p style="font-size: 16px; color: #64748b; font-weight: bold;">次回も頑張りましょう！</p>
+            </div>
+        </div>
+        <div class="bg-[#f5f2ed] w-full max-w-xl rounded-3xl p-12 shadow-2xl space-y-10 border-t-[12px] border-[#5a7d9a] relative overflow-hidden">
+            <div class="text-center">
+                <h2 class="text-3xl font-black text-[#2c3e50] mb-3">演習結果レポート</h2>
+                <div class="h-1.5 w-24 bg-[#5a7d9a] mx-auto rounded-full mb-2 opacity-50"></div>
+                <p id="result-status-comment" class="text-xs text-slate-400 font-bold tracking-widest"></p>
+            </div>
+            <div class="grid grid-cols-3 gap-6 text-center">
+                <div class="bg-white p-6 rounded-2xl shadow-sm border-b-8 border-slate-200">
+                    <span class="text-[11px] text-slate-400 font-bold block mb-2 uppercase tracking-tighter">正答率</span>
+                    <span id="res-rate" class="text-5xl font-black leading-none">0%</span>
+                </div>
+                <div class="bg-white p-6 rounded-2xl shadow-sm border-b-8 border-slate-200">
+                    <span class="text-[11px] text-slate-400 font-bold block mb-2 uppercase tracking-tighter">正解数</span>
+                    <span id="res-score" class="text-2xl font-black text-slate-700 pt-2 block">0 / 0</span>
+                </div>
+                <div class="bg-white p-6 rounded-2xl shadow-sm border-b-8 border-slate-200">
+                    <span class="text-[11px] text-slate-400 font-bold block mb-2 uppercase tracking-tighter">学習時間</span>
+                    <span id="res-time" class="text-2xl font-black text-slate-700 pt-2 block">0:00</span>
+                </div>
+            </div>
+            <div class="flex flex-col gap-4 pt-6">
+                <button id="btn-download" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-base font-black py-5 rounded-2xl shadow-xl transition-all">PDFレポートを保存する</button>
+                <div class="flex gap-4">
+                    <button id="btn-wrong-review" class="flex-1 bg-rose-600 hover:bg-rose-700 text-white text-base font-black py-5 rounded-2xl shadow-xl hidden">誤答を復習する</button>
+                    <button onclick="location.reload()" class="flex-1 bg-slate-800 hover:bg-slate-900 text-white text-base font-black py-5 rounded-2xl shadow-xl">最初から解く</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        const rawQs = [
+            { id: 'r7-q1', category: 'テクノロジ', text: '大規模言語モデルを用いた自然言語処理において、事前学習済みのモデルに対して行うファインチューニングに関する記述として、最も適切なものはどれか。', options: ['特定のデータを用いて追加で学習を行い、目的とするタスクに適用できるようにする。', '強化学習を行い、最適な結果が得られるようにする。', '事前学習と同じデータを繰り返し用いて学習を行い、精度を高める。', '大量のテキストデータを用いて学習を行い、精度を高める。'], answer: 0, expl: 'ファインチューニングは、特定の目的に合わせて既存のモデルを追加学習させる手法です。' },
+            { id: 'r7-q2', category: 'テクノロジ', text: '浮動小数点形式で表現された数値の演算結果における丸め誤差の説明はどれか。', options: ['けた数に限度があるので、最下位けたより小さい部分について四捨五入や切捨てを行うことで生じる誤差', 'コンピュータの扱える最大値を超えることで生じる誤差', '指数部が小さい方の数値の仮数部の下位部分が失われることで生じる誤差', '絶対値がほぼ等しい数値の加減算において、有効数字が失われることで生じる誤差'], answer: 0, expl: '丸め誤差は、表現可能な桁数の限界によって生じる端数処理の誤差です。' },
+            { id: 'r7-q3', category: 'テクノロジ', text: '2分探索木において、ノードaの左部分木にある全てのノードの値はaより小さく、右部分木にある全てのノードの値はaより大きい。図の木構造における大小関係として適切なものはどれか。', options: ['d < b < e < a < f < c < g', 'a < b < d < e < c < f < g', 'd < e < f < g < b < c < a', 'g < f < c < e < d < b < a'], answer: 0, expl: '2分探索木の中順（In-order）走査を行うと、値が昇順に並びます。' },
+            { id: 'r7-q7', category: 'テクノロジ', type: 'MATH', gen: () => {
+                const size = Math.floor(Math.random() * 4 + 1);
+                const time = Math.floor(Math.random() * 3 + 4);
+                const speed = 40;
+                const overhead = 1.2;
+                const totalBits = size * 8 * 1024 * 1024 * 1024 * overhead;
+                const bandwidth = speed * 1000 * 1000 * time * 60;
+                const rate = Math.round((totalBits / bandwidth) * 100);
+                return { text: `${size}Gバイトの動画データを40Mビット/秒の回線でダウンロードしたところ、${time}分掛かった。回線利用率は約何%か。付加情報は20%とする。`, options: [`${rate}%`, '15%', '45%', '85%'], answer: 0, expl: '総データ量を回線の最大転送能力で割ることで利用率を算出します。' };
+            }},
+            { id: 'r6-q1', category: 'テクノロジ', text: 'X及びYはそれぞれ0又は1の値をとる変数である。X AND (X ∇ Y) = 0、X XOR (X ∇ Y) = 1 が成り立つ演算 ∇ はどれか。', options: ['NAND', 'AND', 'OR', 'NOR'], answer: 0, expl: '真理値表に各演算を代入すると、NANDの場合にのみ条件が成立します。' },
+            { id: 'r6-q2', category: 'テクノロジ', text: 'アルファベットのASCIIコードを10進表記した時の1の位をハッシュ値とする。衝突（コリジョン）が起こる組合せはどれか。', options: ['d(100) と x(120)', 'a(97) と i(105)', 'b(98) と r(114)', 'c(99) と l(108)'], answer: 0, expl: 'dとxは共に1の位が0であり、同じハッシュ値を持つため衝突します。' },
+            { id: 'r6-q7', category: 'テクノロジ', text: 'DBMSにおける「原子性（Atomicity）」の説明として適切なものはどれか。', options: ['トランザクション内の処理は、全てが実行されるか、全てが取り消されるかのどちらかである', '何度実行しても結果は常に同じである', '障害発生後も更新済みのデータは保証される', '一つの処理結果が他の処理に影響を与えない'], answer: 0, expl: '原子性は ACID 特性の一つで、「All or Nothing」を意味します。' },
+            { id: 'r6-q11', category: 'テクノロジ', text: 'ソフトウェアの結合テストを上位モジュールから順に行う際、未完成の下位モジュールの代わりに使用するものはどれか。', options: ['スタブ', 'ドライバ', 'エミュレータ', 'シミュレータ'], answer: 0, expl: '上位からテストする際の代役はスタブ、下位からならドライバです。' },
+            { id: 'r6-q20', category: 'ストラテジ', text: '日本において「産業財産権」と総称される四つの権利はどれか。', options: ['特許権、実用新案権、意匠権、商標権', '著作権、特許権、意匠権、商標権', '特許権、実用新案権、育成者権、商標権', '特許権、意匠権、商標権、商号権'], answer: 0, expl: '特許・実用新案・意匠・商標の4つが産業財産権に該当します。' },
+            { id: 'r5-q3', category: 'テクノロジ', text: '主記憶を複数の独立したグループに分け、並列にアクセスすることで高速化を図る技術はどれか。', options: ['メモリインタリーブ', 'DMA', 'ライトスルー', 'キャッシュメモリ'], answer: 0, expl: 'メモリインタリーブは、連続したアドレスを異なるバンクに割り当て並列アクセスする方式です。' },
+            { id: 'r5-q4', category: 'テクノロジ', text: 'データ発生源に近い場所にあるサーバ等で一次処理を行い、リアルタイム性を高める構成はどれか。', options: ['エッジコンピューティング', 'クラウドコンピューティング', 'グリッドコンピューティング', 'サーバ仮想化'], answer: 0, expl: 'エッジコンピューティングは、端末に近い場所で分散処理を行う技術です。' },
+            { id: 'r5-q9', category: 'テクノロジ', text: 'Webサイトにアクセスしただけで、ブラウザの脆弱性を突いてマルウェアに感染させる攻撃はどれか。', options: ['ドライブバイダウンロード', 'フィッシング', 'SQLインジェクション', '辞書攻撃'], answer: 0, expl: 'ドライブバイダウンロードは、利用者の意図に関わらずマルウェアを落とさせる攻撃です。' },
+            { id: 'r5-q15', category: 'テクノロジ', text: 'ハイブリッドクラウドの説明として適切なものはどれか。', options: ['自社専用クラウドと汎用クラウドを連携させ、相互運用を可能にすること', 'クラウドの一部を自社用にカスタマイズすること', '個人向けと法人向けの両方のサービスを提供すること', '有償と無償のサービスを区分して提供すること'], answer: 0, expl: 'パブリッククラウドとプライベートクラウドを組み合わせた形態を指します。' },
+            { id: 'r5-q19', category: 'ストラテジ', text: '情報管理および情報システムに関する戦略を統括する最高責任者はどれか。', options: ['CIO', 'CEO', 'CFO', 'CTO'], answer: 0, expl: 'CIO（Chief Information Officer）は情報戦略の責任者です。' },
+            { id: 'math-avail', category: 'テクノロジ', type: 'MATH', gen: () => {
+                const mtbf = Math.floor(Math.random() * 31 + 30) * 100;
+                const mttr = Math.floor(Math.random() * 6 + 5) * 100;
+                const rate = (mtbf / (mtbf + mttr)).toFixed(3);
+                return { text: `MTBFが${mtbf}時間、MTTRが${mttr}時間の装置がある。この装置の稼働率はいくらか。`, options: [rate, (rate*0.9).toFixed(3), (rate*1.1).toFixed(3), (1-rate).toFixed(3)], answer: 0, expl: `稼働率 = MTBF / (MTBF + MTTR) = ${mtbf} / (${mtbf} + ${mttr}) = ${rate}` };
+            }}
+        ];
+        let state = { questions: [], currentIdx: 0, score: 0, startTime: null, history: JSON.parse(localStorage.getItem('fe_history') || '[]'), wrongIds: JSON.parse(localStorage.getItem('fe_wrong') || '[]') };
+        const shuffle = (arr) => arr.sort(() => Math.random() - 0.5);
+        const generateSession = () => {
+            const filter = document.getElementById('category-filter').value;
+            let pool = rawQs.filter(q => filter === 'ALL' || q.category === filter);
+            state.questions = shuffle(pool.map(q => {
+                let inst = q.gen ? q.gen() : { ...q };
+                const ansStr = inst.options[inst.answer];
+                inst.options = shuffle([...inst.options]);
+                inst.answer = inst.options.indexOf(ansStr);
+                inst.id = q.id; inst.category = q.category;
+                return inst;
+            })).slice(0, 5);
+            state.currentIdx = 0; state.score = 0; state.startTime = new Date();
+            renderQuestion();
+        };
+        const renderQuestion = () => {
+            const q = state.questions[state.currentIdx];
+            document.getElementById('q-number').innerText = `問 ${state.currentIdx + 1} / ${state.questions.length}`;
+            document.getElementById('q-category').innerText = q.category;
+            document.getElementById('q-text').innerText = q.text;
+            const grid = document.getElementById('choices-grid'); grid.innerHTML = '';
+            q.options.forEach((opt, i) => {
+                const btn = document.createElement('button');
+                btn.className = "choice-btn w-full text-left p-6 border-2 border-slate-200 rounded-2xl flex items-center gap-6 text-base font-bold shadow-sm";
+                btn.innerHTML = `<span class="label-circle w-10 h-10 flex-shrink-0 bg-slate-50 flex items-center justify-center rounded-full text-sm font-black text-slate-400 border border-slate-200 shadow-inner">${['ア', 'イ', 'ウ', 'エ'][i]}</span><span class="flex-grow">${opt}</span><span class="fb-icon hidden"></span>`;
+                btn.onclick = () => handleChoice(i); grid.appendChild(btn);
+            });
+            const prog = ((state.currentIdx + 1) / state.questions.length) * 100;
+            document.getElementById('progress-bar-fill').style.width = `${prog}%`;
+            document.getElementById('progress-label').innerText = `${state.currentIdx + 1} / ${state.questions.length}`;
+            document.getElementById('expl-panel').classList.add('hidden');
+        };
+        const handleChoice = (idx) => {
+            const q = state.questions[state.currentIdx];
+            const btns = document.getElementById('choices-grid').querySelectorAll('button');
+            btns.forEach(b => b.disabled = true);
+            const correct = idx === q.answer;
+            const icon = btns[idx].querySelector('.fb-icon'); icon.classList.remove('hidden');
+            const label = btns[idx].querySelector('.label-circle');
+            if (correct) {
+                state.score++;
+                btns[idx].classList.add('border-emerald-500', 'bg-emerald-50');
+                label.classList.add('bg-emerald-500', 'text-white', 'border-emerald-500');
+                icon.innerHTML = `<span class="status-icon correct-icon">✓</span>`;
+                document.getElementById('ans-status').innerHTML = `<div class="text-2xl font-black text-emerald-600">正解です！</div>`;
+            } else {
+                btns[idx].classList.add('border-rose-500', 'bg-rose-50');
+                label.classList.add('bg-rose-500', 'text-white', 'border-rose-500');
+                btns[q.answer].classList.add('border-emerald-500', 'bg-emerald-50');
+                btns[q.answer].querySelector('.label-circle').classList.add('bg-emerald-500', 'text-white', 'border-emerald-500');
+                icon.innerHTML = `<span class="status-icon incorrect-icon">✗</span>`;
+                document.getElementById('ans-status').innerHTML = `<div class="text-2xl font-black text-rose-600">不正解です</div>`;
+                if (!state.wrongIds.includes(q.id)) { state.wrongIds.push(q.id); localStorage.setItem('fe_wrong', JSON.stringify(state.wrongIds)); }
+            }
+            document.getElementById('expl-text').innerText = q.expl || '解説はありません。';
+            document.getElementById('expl-panel').classList.remove('hidden');
+        };
+        const finish = () => {
+            const timeDiff = Math.floor((new Date() - state.startTime) / 1000);
+            const rate = Math.round((state.score / state.questions.length) * 100);
+            state.history.push({ date: new Date().getTime(), rate, score: state.score });
+            localStorage.setItem('fe_history', JSON.stringify(state.history));
+            document.getElementById('res-rate').innerText = `${rate}%`;
+            document.getElementById('res-rate').style.color = rate >= 60 ? '#1d4ed8' : '#dc2626';
+            document.getElementById('result-status-comment').innerText = rate >= 60 ? '合格圏内' : '要復習';
+            document.getElementById('res-score').innerText = `${state.score} / ${state.questions.length}`;
+            document.getElementById('res-time').innerText = `${Math.floor(timeDiff/60)}分${(timeDiff%60)}秒`;
+            document.getElementById('result-overlay').classList.remove('hidden');
+            const last = state.history[state.history.length-1];
+            const statsEl = document.getElementById('top-stats');
+            statsEl.classList.remove('hidden');
+            statsEl.innerText = `前回成績: ${last.rate}% (${state.wrongIds.length}題ミス)`;
+        };
+        document.getElementById('btn-download').onclick = () => {
+            const report = document.getElementById('pdf-report');
+            const now = new Date();
+            const timeDiff = Math.floor((now - state.startTime) / 1000);
+            const rate = Math.round((state.score / state.questions.length) * 100);
+            document.getElementById('pdf-date').innerText = now.toLocaleDateString('ja-JP', {year:'numeric', month:'long', day:'numeric', weekday:'long'});
+            document.getElementById('pdf-rate-num').innerText = `${rate}%`;
+            document.getElementById('pdf-rate-num').style.color = rate >= 60 ? '#1d4ed8' : '#dc2626';
+            document.getElementById('pdf-judge').innerText = rate >= 60 ? '合格圏内' : '要復習';
+            document.getElementById('pdf-judge').style.color = rate >= 60 ? '#1d4ed8' : '#dc2626';
+            document.getElementById('pdf-score').innerText = `${state.score} 問 / ${state.questions.length} 問中`;
+            document.getElementById('pdf-time').innerText = `${Math.floor(timeDiff/60)}分${timeDiff%60}秒`;
+            report.style.display = 'block';
+            html2canvas(report, {scale: 2}).then(canvas => {
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF('p', 'mm', 'a4');
+                const imgData = canvas.toDataURL('image/png');
+                doc.addImage(imgData, 'PNG', 0, 0, 210, 297);
+                doc.save('FE_Report.pdf');
+                report.style.display = 'none';
+            });
+        };
+        document.getElementById('btn-next').onclick = () => { if (++state.currentIdx < state.questions.length) renderQuestion(); else finish(); };
+        const cats = [...new Set(rawQs.map(q => q.category))];
+        cats.forEach(c => { const o = document.createElement('option'); o.value = c; o.innerText = c; document.getElementById('category-filter').appendChild(o); });
+        document.getElementById('category-filter').onchange = generateSession;
+        generateSession();
+    </script>
+</body>
+</html>
